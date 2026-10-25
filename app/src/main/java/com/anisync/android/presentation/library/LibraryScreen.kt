@@ -25,12 +25,10 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyGridState
@@ -38,6 +36,7 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.foundation.text.input.rememberTextFieldState
 import androidx.compose.material.icons.Icons
@@ -83,9 +82,8 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalInputModeManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -94,25 +92,23 @@ import com.anisync.android.data.WhatsNewItem
 import com.anisync.android.domain.LibraryEntry
 import com.anisync.android.domain.LibraryPriority
 import com.anisync.android.domain.LibraryStatus
-import com.anisync.android.presentation.components.result.ResultGroupHeader
 import com.anisync.android.presentation.components.CustomPullToRefreshIndicator
 import com.anisync.android.presentation.components.ErrorState
-import com.anisync.android.presentation.components.LocalWhatsNew
+import com.anisync.android.presentation.components.ExpandSearchOnRequest
+import com.anisync.android.presentation.components.ScrollToTopOnRequest
 import com.anisync.android.presentation.components.WhatsNewDot
-import com.anisync.android.presentation.components.rememberActiveWhatsNew
-import com.anisync.android.presentation.discover.components.DiscoverNoResultsState
 import com.anisync.android.presentation.components.alert.rememberRateLimitedRefresh
+import com.anisync.android.presentation.components.rememberActiveWhatsNew
+import com.anisync.android.presentation.components.result.ResultGroupHeader
 import com.anisync.android.presentation.library.components.BulkAddToListSheet
 import com.anisync.android.presentation.library.components.BulkPrioritySheet
 import com.anisync.android.presentation.library.components.BulkProgressDialog
 import com.anisync.android.presentation.library.components.BulkScoreSheet
 import com.anisync.android.presentation.library.components.BulkStatusSheet
 import com.anisync.android.presentation.library.components.EditLibraryEntrySheet
-import com.anisync.android.presentation.library.components.ScoreOnCompleteSheet
-import com.anisync.android.presentation.library.components.LibraryEmptyState
 import com.anisync.android.presentation.library.components.LibraryBulkActionBar
 import com.anisync.android.presentation.library.components.LibraryBulkMoreMenu
-import com.anisync.android.presentation.library.components.LibraryFilterChipBar
+import com.anisync.android.presentation.library.components.LibraryEmptyState
 import com.anisync.android.presentation.library.components.LibraryFilterId
 import com.anisync.android.presentation.library.components.LibraryFilterSheetHost
 import com.anisync.android.presentation.library.components.LibraryOverflowMenu
@@ -123,11 +119,11 @@ import com.anisync.android.presentation.library.components.LibrarySelectionTopBa
 import com.anisync.android.presentation.library.components.LibrarySortSheet
 import com.anisync.android.presentation.library.components.LibraryViewOptionsSheet
 import com.anisync.android.presentation.library.components.ListManagementSheet
+import com.anisync.android.presentation.library.components.ScoreOnCompleteSheet
 import com.anisync.android.presentation.library.components.SkeletonGrid
 import com.anisync.android.presentation.library.components.SkeletonList
 import com.anisync.android.presentation.library.components.SortIcon
 import com.anisync.android.presentation.library.components.airedCount
-import com.anisync.android.presentation.settings.components.InfoNotice
 import com.anisync.android.presentation.util.LIBRARY_ALL_TAB_ID
 import com.anisync.android.presentation.util.LIBRARY_FAVORITES_TAB_ID
 import com.anisync.android.presentation.util.LocalAppSettings
@@ -142,8 +138,6 @@ import com.anisync.android.ui.theme.ProvideDisplaySize
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.launch
 import kotlin.time.Duration.Companion.milliseconds
-import com.anisync.android.presentation.components.ScrollToTopOnRequest
-import com.anisync.android.presentation.components.ExpandSearchOnRequest
 
 sealed class LibraryTab {
     /** Browse-all tab showing every status list merged (#91). Lives in the tab order like the rest. */
@@ -311,9 +305,6 @@ fun LibraryScreen(
         remember(navigateToMediaDetails, searchBarState, coroutineScope) {
             { id ->
                 keyboardController?.hide()
-                // The overlay is a Popup that otherwise persists over MediaDetails and keeps
-                // firing taps onto a stale list.
-                coroutineScope.launch { searchBarState.animateToCollapsed() }
                 navigateToMediaDetails(id)
             }
         }
@@ -387,9 +378,21 @@ fun LibraryScreen(
         if (state == EnterExitState.Visible) 1f else 0f
     }
 
+    var reopenSearchBarOverlay by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(isSharedTransitionRunning, isLibraryEnteringFromBackStack) {
+        if (isSharedTransitionRunning && !isLibraryEnteringFromBackStack) {
+            reopenSearchBarOverlay = searchBarState.currentValue == SearchBarValue.Expanded
+            // The overlay is a Popup that otherwise persists over MediaDetails and keeps
+            // firing taps onto a stale list.
+            coroutineScope.launch { searchBarState.animateToCollapsed() }
+        }
+    }
+
     LaunchedEffect(shouldKeepTopBarOverlayForReturn, isLibraryEnteringFromBackStack) {
         if (shouldKeepTopBarOverlayForReturn && isLibraryEnteringFromBackStack) {
             hasObservedLibraryReEnter = true
+            if (reopenSearchBarOverlay)
+                coroutineScope.launch { searchBarState.animateToExpanded() }
         }
     }
 
