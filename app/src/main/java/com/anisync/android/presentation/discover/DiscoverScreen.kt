@@ -239,9 +239,23 @@ fun DiscoverScreen(
         if (state == EnterExitState.Visible) 1f else 0f
     }
 
+    var reopenSearchBarOverlay by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(isSharedTransitionRunning, isDiscoverEnteringFromBackStack) {
+        if (isSharedTransitionRunning && !isDiscoverEnteringFromBackStack) {
+            reopenSearchBarOverlay = searchBarState.currentValue == SearchBarValue.Expanded
+            // Collapse the full-screen search overlay before navigating; the overlay
+            // is a Popup window that otherwise persists over MediaDetails and lets
+            // tap/back events keep firing onto a stale list, repeatedly re-pushing
+            // the detail destination (observed on Android 16 with predictive back).
+            coroutineScope.launch { searchBarState.animateToCollapsed() }
+        }
+    }
+
     LaunchedEffect(shouldKeepTopBarOverlayForReturn, isDiscoverEnteringFromBackStack) {
         if (shouldKeepTopBarOverlayForReturn && isDiscoverEnteringFromBackStack) {
             hasObservedDiscoverReEnter = true
+            if (reopenSearchBarOverlay)
+                coroutineScope.launch { searchBarState.animateToExpanded() }
         }
     }
 
@@ -298,11 +312,6 @@ fun DiscoverScreen(
     val onSearchItemClick: (Int) -> Unit = remember(navigateToMediaDetails, searchBarState, coroutineScope, keyboardController) {
         { id ->
             keyboardController?.hide()
-            // Collapse the full-screen search overlay before navigating; the overlay
-            // is a Popup window that otherwise persists over MediaDetails and lets
-            // tap/back events keep firing onto a stale list, repeatedly re-pushing
-            // the detail destination (observed on Android 16 with predictive back).
-            coroutineScope.launch { searchBarState.animateToCollapsed() }
             navigateToMediaDetails(id, TransitionKeys.DISCOVER)
         }
     }
@@ -398,28 +407,24 @@ fun DiscoverScreen(
     val onCharacterItemClick: (Int) -> Unit = remember(onCharacterClick, searchBarState, coroutineScope, keyboardController) {
         { id ->
             keyboardController?.hide()
-            coroutineScope.launch { searchBarState.animateToCollapsed() }
             onCharacterClick(id)
         }
     }
     val onStaffItemClick: (Int) -> Unit = remember(onStaffClick, searchBarState, coroutineScope, keyboardController) {
         { id ->
             keyboardController?.hide()
-            coroutineScope.launch { searchBarState.animateToCollapsed() }
             onStaffClick(id)
         }
     }
     val onStudioItemClick: (Int) -> Unit = remember(onStudioClick, searchBarState, coroutineScope, keyboardController) {
         { id ->
             keyboardController?.hide()
-            coroutineScope.launch { searchBarState.animateToCollapsed() }
             onStudioClick(id)
         }
     }
     val onUserItemClick: (String) -> Unit = remember(onUserClick, searchBarState, coroutineScope, keyboardController) {
         { name ->
             keyboardController?.hide()
-            coroutineScope.launch { searchBarState.animateToCollapsed() }
             onUserClick(name)
         }
     }
